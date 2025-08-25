@@ -1,134 +1,171 @@
-    import { GoogleGenAI } from "https://esm.run/@google/genai";
+// --- script.js ESTABLE — MathJax + math.js + fetch + filtro ---
 
-// 🔑 API Key (solo para pruebas, nunca en producción)
-const ai = new GoogleGenAI({
-  apiKey: "AIzaSyDGOEA2AtjXUCKmO45RLr3t535438aFFsk"
-});
+// 🔐 Config
+const API_KEY = "AIzaSyDGOEA2AtjXUCKmO45RLr3t535438aFFsk";
+const MODEL = "gemini-2.5-flash";
 
-// 📌 Frases prohibidas
+// 🌐 Elementos del DOM (compat: #chat-box o #respuesta)
+const chatBox = document.getElementById("chat-box") || document.getElementById("respuesta");
+const input = document.getElementById("prompt");
+const sendBtn = document.getElementById("enviar");
+
+// ——————— UI helpers ———————
+function addMessage(text, sender = "bot") {
+  const msg = document.createElement("div");
+  msg.className = `message ${sender}`;
+
+  // opcional: burbuja simple; usa tu CSS existente .message.user/.message.bot
+  msg.textContent = text;
+  chatBox.appendChild(msg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // Render LaTeX en este mensaje (MathJax v3)
+  if (window.MathJax?.typesetPromise) {
+    MathJax.typesetPromise([msg]).catch(() => {});
+  }
+}
+
+function addLoader() {
+  const msg = document.createElement("div");
+  msg.className = "message bot";
+  msg.textContent = "Escribiendo…";
+  msg.style.opacity = "0.7";
+  chatBox.appendChild(msg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+  return msg;
+}
+
+// ——————— Filtro preguntas prohibidas ———————
 const bannedPhrases = [
-  "quien te creo",
-  "quién te creó",
-  "quien te creó",
-  "quien te hizo",
-  "quién te hizo",
-  "qué eres",
-  "que eres",
-  "eres humano",
-  "eres una ia",
-  "eres real",
-  "cual es tu modelo",
-  "qué modelo eres",
-  "que modelo eres"
+  "quien te creo","quién te creó","quien te creó","quien te hizo","quién te hizo",
+  "qué eres","que eres","eres humano","eres una ia","eres real",
+  "cual es tu modelo","qué modelo eres","que modelo eres"
 ];
 
 function esPreguntaBaneada(texto) {
-  const t = texto.toLowerCase()
-                 .normalize("NFD")
-                 .replace(/[\u0300-\u036f]/g, ""); // elimina tildes
+  const t = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return bannedPhrases.some(frase => t.includes(frase));
 }
 
-// 📌 Detección de cálculo matemático
-function esCalculo(texto) {
-  return /[0-9+\-*/^=()]/.test(texto);
+// ——————— Evaluador con math.js ———————
+// Activación solo con prefijo: "= ..." o "/calc ..."
+function esCalculo(s) {
+  const t = s.trim();
+  return t.startsWith("=") || t.startsWith("/calc ");
 }
 
-// 📌 Evaluador con math.js
-function evaluarConMathJS(expr) {
-  try {
-    const node = math.parse(expr);
-    const result = node.evaluate();
-    const latex = `\\( ${node.toTex()} = ${math.format(result)} \\)`;
-    return { latex, result };
-  } catch (err) {
-    throw new Error("Expresión inválida");
-  }
-}
+function evaluarConMathJS(entrada) {
+  // limpia prefijo
+  let expr = entrada.trim();
+  if (expr.startsWith("/calc ")) expr = expr.slice(6).trim();
+  if (expr.startsWith("=")) expr = expr.slice(1).trim();
 
-// 📌 Agregar mensajes al chat
-function addMessage(texto, sender = "bot") {
-  const chat = document.getElementById("chat");
-  const msg = document.createElement("div");
-  msg.className = `msg ${sender}`;
+  if (!expr) throw new Error("Expresión vacía");
 
-  if (sender === "bot") {
-    // render con KaTeX si hay fórmula
-    if (texto.includes("\\(") || texto.includes("\\[")) {
-      renderMathInElement(msg, {
-        delimiters: [
-          { left: "\\(", right: "\\)", display: false },
-          { left: "\\[", right: "\\]", display: true }
-        ]
-      });
-      msg.innerHTML = texto;
-    } else {
-      msg.textContent = texto;
-    }
+  const node = math.parse(expr);
+  const result = node.evaluate();
+
+  const exprTex = node.toTex({ parenthesis: "keep", implicit: "show" });
+
+  let resultTex;
+  if (math.typeOf(result) === "Matrix") {
+    const arr = result.toArray();
+    const filas = arr.map(row => (Array.isArray(row) ? row.join(" & ") : row)).join(" \\\\ ");
+    resultTex = `\\begin{bmatrix}${filas}\\end{bmatrix}`;
   } else {
-    msg.textContent = texto;
+    // intenta latex del resultado; si falla, usa string
+    try {
+      resultTex = math.parse(String(math.format(result, { precision: 14 }))).toTex({ parenthesis: "keep" });
+    } catch {
+      resultTex = String(result).replace(/_/g, "\\_");
+    }
   }
 
-  chat.appendChild(msg);
-  chat.scrollTop = chat.scrollHeight;
+  return `$$${exprTex} = ${resultTex}$$`;
 }
 
-// 📌 Loader mientras responde la API
-function addLoader() {
-  const chat = document.getElementById("chat");
-  const loader = document.createElement("div");
-  loader.className = "msg bot loading";
-  loader.innerHTML = "<span class='dot'></span><span class='dot'></span><span class='dot'></span>";
-  chat.appendChild(loader);
-  chat.scrollTop = chat.scrollHeight;
-  return loader;
+// ——————— Normalizador LaTeX para MathJax ———————
+function normalizarLatexParaMathJax(texto) {
+  let t = texto || "";
+
+  // bloques ```latex ...``` o ``` ...``` -> $$ ... $$
+  t = t.replace(/```(?:latex|math)?\s*([\s\S]*?)```/gi, (_, body) => `\n$$${body.trim()}$$\n`);
+
+  // si detecta comandos LaTeX sin $$, envuelve la última línea "matemática"
+  if (!/\$\$[\s\S]*\$\$/.test(t) && /\\(frac|sqrt|sum|int|lim|alpha|beta|gamma|theta)/.test(t)) {
+    const lineas = t.split(/\r?\n/);
+    for (let i = lineas.length - 1; i >= 0; i--) {
+      const L = lineas[i].trim();
+      if (!L) continue;
+      if (L.includes("\\frac") || L.includes("\\sqrt") || /\\[a-zA-Z]+/.test(L)) {
+        lineas[i] = `$$${L}$$`;
+        t = lineas.join("\n");
+        break;
+      }
+    }
+  }
+  return t;
 }
 
-// 📌 Enviar mensaje
+// ——————— Envío ———————
 async function enviar() {
-  const input = document.getElementById("prompt");
-  const pregunta = input.value.trim();
+  const pregunta = (input.value || "").trim();
   if (!pregunta) return;
 
   addMessage(pregunta, "user");
   input.value = "";
 
-  // 🚫 Pregunta prohibida
+  // 0) filtro
   if (esPreguntaBaneada(pregunta)) {
     addMessage("🤖 Prefiero no responder a esa pregunta.", "bot");
     return;
   }
 
-  // ➗ Pregunta matemática local
+  // 1) cálculo local
   if (esCalculo(pregunta)) {
     try {
-      const { latex } = evaluarConMathJS(pregunta);
+      const latex = evaluarConMathJS(pregunta);
       addMessage(latex, "bot");
-    } catch {
-      addMessage("❌ Error al evaluar la expresión.", "bot");
+    } catch (e) {
+      console.error(e);
+      addMessage("❌ Error al evaluar la expresión. Revisa la sintaxis.", "bot");
     }
     return;
   }
 
-  // 🌐 Consulta a la API
+  // 2) llamada a Gemini (REST con fetch)
   const loader = addLoader();
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: pregunta,
-    });
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: pregunta }] }] })
+      }
+    );
 
-    let texto = response.text || "⚠️ No se pudo generar respuesta.";
-    // convertir bloques de latex en delimitadores KaTeX
-    texto = texto.replace(/```(?:latex|math)?\s*([\s\S]*?)```/gi, (_, body) => `\n\\[${body.trim()}\\]\n`);
+    const data = await resp.json();
+
+    let texto = data?.candidates?.[0]?.content?.parts?.[0]?.text
+              || data?.candidates?.[0]?.content?.parts?.[0]?.text?.[0]
+              || "⚠️ No se pudo generar respuesta.";
+
+    texto = normalizarLatexParaMathJax(texto);
 
     loader.remove();
     addMessage(texto, "bot");
   } catch (e) {
     console.error(e);
-    loader.querySelector(".loading").textContent = "❌ Error al conectar con la API.";
+    loader.textContent = "❌ Error al conectar con la API.";
   }
 }
 
-// 📌 Listener
-document.getElementById("enviar").addEventListener("click", enviar);
+// ——————— Listeners ———————
+sendBtn?.addEventListener("click", enviar);
+input?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    enviar();
+  }
+});
