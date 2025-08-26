@@ -1,113 +1,119 @@
-// --- script.js ESTABLE — MathJax + math.js + fetch + filtro ---
+// === CONFIG ===
+const API_KEY = "AIzaSyDGOEA2AtjXUCKmO45RLr3t535438aFFsk";            // <- pega tu key
+const MODEL   = "gemini-2.5-flash";           // modelo
 
-// 🔐 Config
-const API_KEY = "AIzaSyDGOEA2AtjXUCKmO45RLr3t535438aFFsk";
-const MODEL = "gemini-2.5-flash";
-
-// 🌐 Elementos del DOM (compat: #chat-box o #respuesta)
-const chatBox = document.getElementById("chat-box") || document.getElementById("respuesta");
-const input = document.getElementById("prompt");
+// === DOM ===
+const chatBox = document.getElementById("chat-box");
+const input   = document.getElementById("prompt");
 const sendBtn = document.getElementById("enviar");
 
-// ——————— UI helpers ———————
-function addMessage(text, sender = "bot") {
-  const msg = document.createElement("div");
-  msg.className = `message ${sender}`;
-
-  // opcional: burbuja simple; usa tu CSS existente .message.user/.message.bot
-  msg.textContent = text;
-  chatBox.appendChild(msg);
-  chatBox.scrollTop = chatBox.scrollHeight;
-
-  // Render LaTeX en este mensaje (MathJax v3)
-  if (window.MathJax?.typesetPromise) {
-    MathJax.typesetPromise([msg]).catch(() => {});
-  }
-}
-
-function addLoader() {
-  const msg = document.createElement("div");
-  msg.className = "message bot";
-  msg.textContent = "Escribiendo…";
-  msg.style.opacity = "0.7";
-  chatBox.appendChild(msg);
-  chatBox.scrollTop = chatBox.scrollHeight;
-  return msg;
-}
-
-// ——————— Filtro preguntas prohibidas ———————
+// === Filtro de preguntas prohibidas ===
 const bannedPhrases = [
-  "quien te creo","quién te creó","quien te creó","quien te hizo","quién te hizo",
+  "quien te creo","quién te creó","quien te creó",
+  "quien te hizo","quién te hizo",
   "qué eres","que eres","eres humano","eres una ia","eres real",
   "cual es tu modelo","qué modelo eres","que modelo eres"
 ];
-
 function esPreguntaBaneada(texto) {
-  const t = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return bannedPhrases.some(frase => t.includes(frase));
+  const t = (texto||"").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  return bannedPhrases.some(fr => t.includes(fr));
 }
 
-// ——————— Evaluador con math.js ———————
-// Activación solo con prefijo: "= ..." o "/calc ..."
+// === Cálculo local con math.js: activar con "= ..." o "/calc ..." ===
 function esCalculo(s) {
-  const t = s.trim();
+  const t = (s||"").trim();
   return t.startsWith("=") || t.startsWith("/calc ");
 }
-
 function evaluarConMathJS(entrada) {
-  // limpia prefijo
   let expr = entrada.trim();
   if (expr.startsWith("/calc ")) expr = expr.slice(6).trim();
-  if (expr.startsWith("=")) expr = expr.slice(1).trim();
-
+  if (expr.startsWith("="))     expr = expr.slice(1).trim();
   if (!expr) throw new Error("Expresión vacía");
 
-  const node = math.parse(expr);
+  const node   = math.parse(expr);
   const result = node.evaluate();
 
-  const exprTex = node.toTex({ parenthesis: "keep", implicit: "show" });
+  // Resultado en texto legible (sin LaTeX)
+  const resultStr = Array.isArray(result)
+    ? JSON.stringify(result)
+    : (math.typeOf(result) === "Matrix" ? JSON.stringify(result.toArray())
+       : String(math.format(result, { precision: 14 })));
 
-  let resultTex;
-  if (math.typeOf(result) === "Matrix") {
-    const arr = result.toArray();
-    const filas = arr.map(row => (Array.isArray(row) ? row.join(" & ") : row)).join(" \\\\ ");
-    resultTex = `\\begin{bmatrix}${filas}\\end{bmatrix}`;
-  } else {
-    // intenta latex del resultado; si falla, usa string
-    try {
-      resultTex = math.parse(String(math.format(result, { precision: 14 }))).toTex({ parenthesis: "keep" });
-    } catch {
-      resultTex = String(result).replace(/_/g, "\\_");
-    }
-  }
-
-  return `$$${exprTex} = ${resultTex}$$`;
+  return `${expr} = ${resultStr}`;
 }
 
-// ——————— Normalizador LaTeX para MathJax ———————
-function normalizarLatexParaMathJax(texto) {
-  let t = texto || "";
-
-  // bloques ```latex ...``` o ``` ...``` -> $$ ... $$
-  t = t.replace(/```(?:latex|math)?\s*([\s\S]*?)```/gi, (_, body) => `\n$$${body.trim()}$$\n`);
-
-  // si detecta comandos LaTeX sin $$, envuelve la última línea "matemática"
-  if (!/\$\$[\s\S]*\$\$/.test(t) && /\\(frac|sqrt|sum|int|lim|alpha|beta|gamma|theta)/.test(t)) {
-    const lineas = t.split(/\r?\n/);
-    for (let i = lineas.length - 1; i >= 0; i--) {
-      const L = lineas[i].trim();
-      if (!L) continue;
-      if (L.includes("\\frac") || L.includes("\\sqrt") || /\\[a-zA-Z]+/.test(L)) {
-        lineas[i] = `$$${L}$$`;
-        t = lineas.join("\n");
-        break;
-      }
-    }
-  }
-  return t;
+// === UI helpers ===
+function addMessage(text, who="bot") {
+  const div = document.createElement("div");
+  div.className = `message ${who}`;
+  // usamos monospace para que las fórmulas ASCII queden prolijas
+  div.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  div.textContent = text;
+  chatBox.appendChild(div);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+function addLoader() {
+  const div = document.createElement("div");
+  div.className = "message bot loader";
+  div.textContent = "Escribiendo…";
+  chatBox.appendChild(div);
+  chatBox.scrollTop = chatBox.scrollHeight;
+  return div;
 }
 
-// ——————— Envío ———————
+// === Conversor simple LaTeX -> Texto legible (sin MathJax) ===
+function latexToPlain(input) {
+  if (!input) return "";
+
+  let s = String(input);
+
+  // quitar delimitadores $$...$$ y $...$
+  s = s.replace(/\$\$?/g, "");
+
+  // bloques ```latex ...``` o ``` ... ```
+  s = s.replace(/```(?:latex|math)?\s*([\s\S]*?)```/gi, (_, body) => body.trim());
+
+  // \left \right (se quitan)
+  s = s.replace(/\\left|\\right/g, "");
+
+  // \frac{a}{b} -> (a)/(b) (aplica varias veces por si hay anidados simples)
+  const frac = /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g;
+  for (let i=0; i<10; i++) { // hasta 10 pasadas para casos comunes
+    if (!frac.test(s)) break;
+    s = s.replace(frac, "($1)/($2)");
+  }
+
+  // \sqrt[n]{x} y \sqrt{x}
+  s = s.replace(/\\sqrt\[(.+?)\]\{(.+?)\}/g, "root($1)($2)");
+  s = s.replace(/\\sqrt\{(.+?)\}/g, "sqrt($1)");
+
+  // potencias y subíndices {…}
+  s = s.replace(/\^\{([^{}]+)\}/g, "^($1)");
+  s = s.replace(/_\{([^{}]+)\}/g, "_($1)");
+  // potencias simples ^x dejan igual
+  // signos y símbolos frecuentes
+  const map = {
+    "\\cdot": "*", "\\times": "×", "\\div": "÷",
+    "\\pm": "±", "\\mp": "∓",
+    "\\leq": "≤", "\\geq": "≥", "\\neq": "≠", "\\approx": "≈",
+    "\\infty": "∞", "\\pi": "π", "\\theta": "θ", "\\alpha": "α",
+    "\\beta": "β", "\\gamma": "γ", "\\Delta": "Δ", "\\delta": "δ"
+  };
+  for (const k in map) {
+    s = s.replace(new RegExp(k, "g"), map[k]);
+  }
+
+  // espacios LaTeX
+  s = s.replace(/\\[,;! ]/g, " ");
+
+  // limpiar múltiples espacios
+  s = s.replace(/[ \t]+/g, " ").trim();
+
+  return s;
+}
+
+// === Envío principal ===
 async function enviar() {
   const pregunta = (input.value || "").trim();
   if (!pregunta) return;
@@ -115,17 +121,17 @@ async function enviar() {
   addMessage(pregunta, "user");
   input.value = "";
 
-  // 0) filtro
+  // 0) Filtro de preguntas prohibidas
   if (esPreguntaBaneada(pregunta)) {
     addMessage("🤖 Prefiero no responder a esa pregunta.", "bot");
     return;
   }
 
-  // 1) cálculo local
+  // 1) Cálculo local
   if (esCalculo(pregunta)) {
     try {
-      const latex = evaluarConMathJS(pregunta);
-      addMessage(latex, "bot");
+      const out = evaluarConMathJS(pregunta);
+      addMessage(out, "bot");
     } catch (e) {
       console.error(e);
       addMessage("❌ Error al evaluar la expresión. Revisa la sintaxis.", "bot");
@@ -133,7 +139,7 @@ async function enviar() {
     return;
   }
 
-  // 2) llamada a Gemini (REST con fetch)
+  // 2) Llamada a Gemini (REST con fetch)
   const loader = addLoader();
   try {
     const resp = await fetch(
@@ -141,17 +147,18 @@ async function enviar() {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: pregunta }] }] })
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: pregunta + "\n\nResponde con fórmulas en texto plano legible (usa sqrt(), ^, y fracciones como (a)/(b)). Evita LaTeX." }] }]
+        })
       }
     );
-
     const data = await resp.json();
 
     let texto = data?.candidates?.[0]?.content?.parts?.[0]?.text
-              || data?.candidates?.[0]?.content?.parts?.[0]?.text?.[0]
-              || "⚠️ No se pudo generar respuesta.";
+             || "⚠️ No se pudo generar respuesta.";
 
-    texto = normalizarLatexParaMathJax(texto);
+    // Si igual vino en LaTeX, lo convertimos a texto
+    texto = latexToPlain(texto);
 
     loader.remove();
     addMessage(texto, "bot");
@@ -161,7 +168,7 @@ async function enviar() {
   }
 }
 
-// ——————— Listeners ———————
+// Listeners
 sendBtn?.addEventListener("click", enviar);
 input?.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
