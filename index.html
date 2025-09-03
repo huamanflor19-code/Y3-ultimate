@@ -1,110 +1,53 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chat con Y3</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-  <style>
-    /* --- Variables de Estilo --- */
-    :root {
-      --background-color: #000000;
-      --ai-bubble-color: #1E1E1E;
-      --user-bubble-color: #FFFFFF;
-      --ai-text-color: #FFFFFF;
-      --user-text-color: #000000;
-      --placeholder-color: #888888;
-      --font-family: 'Inter', sans-serif;
-    }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Y3 Store</title>
+  <!-- CSS externo -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="logo">Y3</div>
+    <nav>
+      <a href="#inicio">Inicio</a>
+      <a href="#tienda">Tienda</a>
+      <a href="#nosotros">Nosotros</a>
+      <a href="#blog">Blog</a>
+      <a href="#soporte">Servicio al cliente</a>
+    </nav>
+  </header>
 
-    /* --- Estilos Generales --- */
-    body {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      background-color: #1a1a1a;
-      font-family: var(--font-family);
-    }
+  <!-- Hero -->
+  <section id="inicio" class="hero">
+    <div class="hero-content">
+      <h1>
+        <span>REYES</span>
+        <span style="color:#ddd">DEL</span>
+        <span style="color:#eee">CAMINO</span>
+      </h1>
+      <p>Créditos de juego, recargas de datos y paquetes Wi-Fi. Todo en un solo lugar: rápido, seguro y al instante.</p>
+      <button id="buyBtn">COMPRAR AHORA</button>
+    </div>
+  </section>
 
-    /* --- Contenedor Principal del Chat --- */
-    .chat-widget {
-      width: 380px;
-      height: 650px;
-      border: 1px solid #333;
-      border-radius: 12px;
-      background-color: var(--background-color);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
+  <!-- Tienda -->
+  <section id="tienda" class="section">
+    <h2>Tienda</h2>
+    <p>Aquí irán tus categorías: Créditos de juego, Datos móviles, Paquetes Wi-Fi, etc.</p>
+  </section>
 
-    /* --- Encabezado --- */
-    .chat-header {
-      display: flex;
-      align-items: center;
-      padding: 15px 20px;
-      background-color: var(--ai-bubble-color);
-      border-bottom: 1px solid #333;
-    }
+  <!-- Footer -->
+  <footer>
+    © <span id="year"></span> Y3 Store. Todos los derechos reservados.
+  </footer>
 
-    .chat-header h1 {
-      margin: 0;
-      font-size: 1.1em;
-      color: var(--ai-text-color);
-      font-weight: 500;
-    }
-
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      background-color: #2ecc71;
-      border-radius: 50%;
-      margin-right: 12px;
-    }
-
-    /* --- Área de Mensajes --- */
-    .message-area {
-      flex-grow: 1;
-      padding: 20px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      scroll-behavior: smooth;
-    }
-
-    .message {
-      max-width: 80%;
-      padding: 12px 16px;
-      border-radius: 18px;
-      line-height: 1.5;
-    }
-
-    /* --- Burbujas de Chat --- */
-    .ai-message {
-      background-color: var(--ai-bubble-color);
-      color: var(--ai-text-color);
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
-    }
-
-    .user-message {
-      background-color: var(--user-bubble-color);
-      color: var(--user-text-color);
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
-    }
-
-    /* --- Indicador de "Escribiendo..." --- */
-    .typing-indicator span {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: #555;
+  <!-- JS externo -->
+  <script src="script.js"></script>
+</body>
+</html>      background-color: #555;
       margin: 0 2px;
       animation: pulse 1.2s infinite ease-in-out;
     }
